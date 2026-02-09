@@ -1,0 +1,2 @@
+flask>=2.0.0
+netifaces-plus>=0.12.0

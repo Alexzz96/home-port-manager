@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  home-port-manager:
+    build: .
+    container_name: home-port-manager
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
+    # Required for ping to work in Docker
+    cap_add:
+      - NET_RAW
+    network_mode: host
