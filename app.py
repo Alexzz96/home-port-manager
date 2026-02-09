@@ -7,7 +7,7 @@
 使用方法:
     python app.py
     
-然后浏览器访问: http://127.0.0.1:5000
+然后浏览器访问: http://127.0.0.1:2333
 """
 
 import os
@@ -377,9 +377,327 @@ class HomeNetworkScanner:
 
 scanner = HomeNetworkScanner()
 
+# ======== HTML Frontend ========
+HTML_TEMPLATE = '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>家庭网络端口管理器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: #f2f2f7; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { background: #fff; color: #000; padding: 30px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header h1 { font-size: 28px; margin-bottom: 6px; font-weight: 700; }
+        .header p { font-size: 14px; color: #8e8e93; }
+        .controls { background: #fff; padding: 16px 20px; border-radius: 16px; margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        button { background: #007aff; color: white; border: none; padding: 10px 18px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        button:hover { background: #0051d5; }
+        button:active { transform: scale(0.96); }
+        button:disabled { background: #c7c7cc; cursor: not-allowed; transform: none; }
+        button.danger { background: #ff3b30; }
+        button.danger:hover { background: #d63029; }
+        select { padding: 10px 14px; border-radius: 10px; border: 1px solid #c7c7cc; font-size: 14px; background: #fff; cursor: pointer; outline: none; }
+        select:hover, select:focus { border-color: #007aff; }
+        .scanning { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+        .device-card { background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); transition: all 0.2s; cursor: pointer; }
+        .device-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .device-card.selected { border: 2px solid #007aff; }
+        .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .device-title { font-size: 17px; font-weight: 600; color: #000; font-family: "SF Mono", Monaco, monospace; }
+        .device-name-input { font-size: 12px; color: #007aff; background: transparent; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; text-align: right; height: 22px; line-height: 22px; outline: none; }
+        .device-name-input:hover { background: #f2f2f7; }
+        .device-name-input:focus { background: #e5f0ff; }
+        .device-name-input::placeholder { color: #c7c7cc; font-size: 11px; }
+        .device-meta { font-size: 13px; color: #8e8e93; margin-bottom: 14px; padding: 10px; background: #f2f2f7; border-radius: 10px; }
+        .ports-list { border-top: 1px solid #e5e5ea; padding-top: 14px; max-height: 280px; overflow-y: auto; }
+        .ports-list::-webkit-scrollbar { width: 6px; }
+        .ports-list::-webkit-scrollbar-track { background: transparent; }
+        .ports-list::-webkit-scrollbar-thumb { background: #c7c7cc; border-radius: 3px; }
+        .port-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; margin-bottom: 4px; border-radius: 10px; transition: background 0.15s; background: #f9f9fb; cursor: pointer; }
+        .port-item:hover { background: #f2f2f7; }
+        .port-number { font-family: "SF Mono", Monaco, monospace; font-weight: 600; background: #007aff; color: white; padding: 5px 11px; border-radius: 8px; font-size: 14px; min-width: 46px; text-align: center; }
+        .risk-高 { color: #fff; background: #ff3b30; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+        .risk-中 { color: #fff; background: #ff9500; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+        .risk-低 { color: #fff; background: #34c759; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+        .empty { text-align: center; padding: 60px; color: #8e8e93; }
+        .empty p { font-size: 16px; margin-bottom: 8px; }
+        .progress { background: #fff; padding: 16px; border-radius: 16px; margin-bottom: 20px; display: none; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .progress-bar { height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #007aff; width: 0%; transition: width 0.3s ease; border-radius: 4px; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; background: #fff; padding: 8px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .tab { padding: 10px 24px; cursor: pointer; border-radius: 10px; font-weight: 500; transition: all 0.2s; color: #8e8e93; font-size: 14px; }
+        .tab:hover { color: #007aff; }
+        .tab.active { background: #007aff; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 家庭网络端口管理器</h1>
+            <p>自动发现内网设备 | 扫描开放端口 | 识别安全风险</p>
+        </div>
+        
+        <div class="controls">
+            <button id="scanDevicesBtn" onclick="scanDevices()">🔍 扫描设备</button>
+            <button id="scanPortsBtn" onclick="scanSelectedDevicePorts()" disabled style="background: #8e8e93;">📡 扫描选中设备端口</button>
+            <button id="scanAllBtn" onclick="scanAll()">🌐 扫描全部</button>
+            <button onclick="exportData()">📊 导出JSON</button>
+            <button onclick="clearData()" class="danger">🗑️ 清除数据</button>
+            <select id="speedSelect" onchange="changeSpeed(this.value)">
+                <option value="fast" selected>🚀 极速</option>
+                <option value="standard">🔄 常规</option>
+            </select>
+            <select id="portModeSelect">
+                <option value="full" selected>🌐 全端口1-65535</option>
+                <option value="common">📋 常用端口</option>
+            </select>
+            <span id="statusText" style="color: #666; margin-left: 10px;"></span>
+        </div>
+        
+        <div class="progress" id="progressDiv">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <div id="progressText" style="color: #666;"></div>
+                <button id="pauseBtn" onclick="togglePause()" style="display: none; background: #ff9500;">⏸️ 暂停</button>
+            </div>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('devices')" id="tab-devices">📱 设备列表</div>
+        </div>
+        
+        <div id="content-devices" class="tab-content active">
+            <div id="scanningArea" style="display: none; background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="margin-bottom: 15px;">🔍 正在扫描...</h3>
+                <div id="scanningDevice" style="color: #666; margin-bottom: 10px;"></div>
+                <div id="foundPorts" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            </div>
+            
+            <div id="devicesList">
+                <div class="empty">
+                    <p>点击"扫描设备"开始发现内网设备</p>
+                    <p style="font-size: 12px; color: #999; margin-top: 5px;">点击"扫描全部"可扫描所有设备的端口</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scanInterval;
+        let selectedDeviceIp = null;
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            document.getElementById('content-' + tab).classList.add('active');
+        }
+        
+        function changeSpeed(mode) {
+            fetch('/api/speed', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode: mode})
+            });
+        }
+        
+        function scanDevices() {
+            setScanningState(true);
+            document.getElementById('statusText').textContent = '正在发现内网设备...';
+            document.getElementById('progressDiv').style.display = 'block';
+            
+            fetch('/api/scan/devices')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { alert(data.error); setScanningState(false); return; }
+                    scanInterval = setInterval(() => checkStatus('devices'), 1000);
+                })
+                .catch(err => { alert('扫描失败: ' + err); setScanningState(false); });
+        }
+        
+        function scanSelectedDevicePorts() {
+            if (!selectedDeviceIp) { alert('请先选择一个设备'); return; }
+            setScanningState(true);
+            const portMode = document.getElementById('portModeSelect').value;
+            document.getElementById('statusText').textContent = `正在扫描 ${selectedDeviceIp}...`;
+            document.getElementById('progressDiv').style.display = 'block';
+            
+            fetch(`/api/scan/ports/${selectedDeviceIp}?mode=${portMode}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { alert(data.error); setScanningState(false); return; }
+                    scanInterval = setInterval(() => checkStatus('ports'), 1000);
+                })
+                .catch(err => { alert('扫描失败: ' + err); setScanningState(false); });
+        }
+        
+        function scanAll() {
+            setScanningState(true);
+            const portMode = document.getElementById('portModeSelect').value;
+            document.getElementById('statusText').textContent = '扫描中...';
+            document.getElementById('scanningArea').style.display = 'block';
+            document.getElementById('devicesList').innerHTML = '';
+            document.getElementById('progressDiv').style.display = 'block';
+            
+            fetch(`/api/scan/all?mode=${portMode}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) { alert(data.error); setScanningState(false); return; }
+                    scanInterval = setInterval(() => checkStatus('all'), 1000);
+                })
+                .catch(err => { alert('扫描失败: ' + err); setScanningState(false); });
+        }
+        
+        function setScanningState(scanning) {
+            document.getElementById('scanDevicesBtn').disabled = scanning;
+            document.getElementById('scanPortsBtn').disabled = scanning || !selectedDeviceIp;
+            document.getElementById('scanAllBtn').disabled = scanning;
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (scanning) {
+                document.getElementById('scanDevicesBtn').classList.add('scanning');
+                document.getElementById('scanAllBtn').classList.add('scanning');
+                document.getElementById('progressDiv').style.display = 'block';
+                pauseBtn.style.display = 'inline-block';
+                pauseBtn.textContent = '⏸️ 暂停';
+                pauseBtn.style.background = '#ff9500';
+            } else {
+                document.getElementById('scanDevicesBtn').classList.remove('scanning');
+                document.getElementById('scanAllBtn').classList.remove('scanning');
+                pauseBtn.style.display = 'none';
+            }
+        }
+        
+        function togglePause() {
+            const pauseBtn = document.getElementById('pauseBtn');
+            const isPaused = pauseBtn.textContent.includes('继续');
+            
+            fetch('/api/scan/pause', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({paused: !isPaused})
+            }).then(r => r.json()).then(data => {
+                if (data.paused) {
+                    pauseBtn.textContent = '▶️ 继续';
+                    pauseBtn.style.background = '#28a745';
+                } else {
+                    pauseBtn.textContent = '⏸️ 暂停';
+                    pauseBtn.style.background = '#ff9500';
+                }
+            });
+        }
+        
+        function checkStatus(type) {
+            fetch('/api/scan/stream').then(r => r.json()).then(data => {
+                const progress = data.progress || 0;
+                document.getElementById('progressFill').style.width = progress + '%';
+                document.getElementById('progressText').textContent = progress + '%';
+                
+                let statusText = '就绪';
+                if (data.scanning) {
+                    statusText = data.current_device ? `扫描中: ${data.current_device}` : '扫描中...';
+                }
+                document.getElementById('statusText').textContent = statusText;
+                
+                if (data.scanning && data.current_device) {
+                    document.getElementById('scanningDevice').textContent = `正在扫描: ${data.current_device}`;
+                    const portsDiv = document.getElementById('foundPorts');
+                    if (data.found_ports && data.found_ports.length > 0) {
+                        portsDiv.innerHTML = data.found_ports.map(p => 
+                            `<span style="background: #007aff; color: white; padding: 6px 12px; border-radius: 8px; font-size: 13px;">${p.port}</span>`
+                        ).join('');
+                    }
+                }
+                
+                if (!data.scanning) {
+                    clearInterval(scanInterval);
+                    setScanningState(false);
+                    document.getElementById('statusText').textContent = '扫描完成';
+                    document.getElementById('progressDiv').style.display = 'none';
+                    document.getElementById('scanningArea').style.display = 'none';
+                    loadDevices();
+                }
+            });
+        }
+        
+        function loadDevices() {
+            fetch('/api/devices').then(r => r.json()).then(devices => {
+                if (devices.length === 0) {
+                    document.getElementById('devicesList').innerHTML = '<div class="empty"><p>未发现设备</p></div>';
+                    return;
+                }
+                
+                const html = devices.map(d => `
+                    <div class="device-card ${selectedDeviceIp === d.ip ? 'selected' : ''}" onclick="selectDevice('${d.ip}', this)">
+                        <div class="device-header">
+                            <div>
+                                <div class="device-title">${d.ip}</div>
+                                ${d.custom_name ? `<div style="font-size: 13px; color: #34c759; margin-top: 4px; font-weight: 500;">${d.custom_name}</div>` : ''}
+                            </div>
+                            <input type="text" value="${d.custom_name || ''}" placeholder="添加备注" class="device-name-input"
+                                onclick="event.stopPropagation();" onkeydown="if(event.key==='Enter'){saveDeviceName('${d.ip}', this.value);this.blur();}" onblur="saveDeviceName('${d.ip}', this.value)">
+                        </div>
+                        <div class="device-meta">MAC: ${d.mac}</div>
+                        <div class="ports-list">
+                            ${d.ports.map(p => `
+                                <div class="port-item" onclick="window.open('http://${d.ip}:${p.port}/', '_blank')">
+                                    <span class="port-number">${p.port}</span>
+                                    <span style="flex: 1; margin: 0 12px; color: #333;">${p.service}</span>
+                                    <span class="risk-${p.risk}">${p.risk}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('');
+                
+                document.getElementById('devicesList').innerHTML = `<div class="device-grid">${html}</div>`;
+            });
+        }
+        
+        function saveDeviceName(ip, name) {
+            fetch('/api/device/note', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ip: ip, name: name})
+            }).then(() => loadDevices());
+        }
+        
+        function selectDevice(ip, element) {
+            selectedDeviceIp = ip;
+            document.getElementById('scanPortsBtn').disabled = false;
+            document.getElementById('scanPortsBtn').style.background = '#007aff';
+            document.getElementById('scanPortsBtn').textContent = `📡 扫描 ${ip}`;
+            
+            document.querySelectorAll('.device-card').forEach(card => card.classList.remove('selected'));
+            element.classList.add('selected');
+        }
+        
+        function clearData() {
+            if (!confirm('确定要清除所有扫描数据吗？')) return;
+            fetch('/api/clear', {method: 'POST'}).then(() => {
+                document.getElementById('devicesList').innerHTML = '<div class="empty"><p>数据已清除</p></div>';
+                selectedDeviceIp = null;
+            });
+        }
+        
+        function exportData() {
+            window.open('/api/export', '_blank');
+        }
+        
+        window.onload = () => {
+            loadDevices();
+        };
+    </script>
+</body>
+</html>'''
+
 @app.route('/')
 def index():
-    return "Home Port Manager - API Server Running"
+    return HTML_TEMPLATE
 
 @app.route('/api/scan/devices')
 def api_scan_devices():
