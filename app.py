@@ -167,9 +167,48 @@ PORT_SERVICES = {
 class HomeNetworkScanner:
     def __init__(self):
         self.gateway = self._get_gateway()
-        self.network = self._get_network()
         self.local_ip = self._get_local_ip()
         self.speed_mode = "fast"
+        # 加载自定义网段配置
+        self.custom_network = self._load_custom_network()
+        self.network = self.custom_network or self._get_network()
+    
+    def _load_custom_network(self):
+        """加载用户自定义网段配置"""
+        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_config.json')
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    return config.get('network')
+            except:
+                pass
+        return None
+    
+    def save_custom_network(self, network):
+        """保存用户自定义网段配置"""
+        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_config.json')
+        try:
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump({'network': network}, f, ensure_ascii=False, indent=2)
+            self.custom_network = network
+            self.network = network
+            return True
+        except Exception as e:
+            print(f"[错误] 保存网段配置失败: {e}")
+            return False
+    
+    def reset_network(self):
+        """重置为自动检测网段"""
+        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network_config.json')
+        if os.path.exists(config_file):
+            try:
+                os.remove(config_file)
+            except:
+                pass
+        self.custom_network = None
+        self.network = self._get_network()
+        return True
         
     def set_speed_mode(self, mode):
         if mode in SCAN_SPEED:
@@ -296,8 +335,10 @@ class HomeNetworkScanner:
             if ip == self.local_ip:
                 return None
             try:
+                # Linux: -c 1 (count), -W 0.5 (timeout in seconds)
+                # Windows: -n 1, -w 500 (timeout in ms)
                 result = subprocess.run(
-                    ['ping', '-n', '1', '-w', str(timeout_ms), ip],
+                    ['ping', '-c', '1', '-W', '1', ip],
                     capture_output=True, text=True, timeout=3
                 )
                 if result.returncode == 0 and 'TTL' in result.stdout.upper():
@@ -427,6 +468,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .ports-list::-webkit-scrollbar { width: 6px; }
         .ports-list::-webkit-scrollbar-track { background: transparent; }
         .ports-list::-webkit-scrollbar-thumb { background: #c7c7cc; border-radius: 3px; }
+        .config-panel { background: #fff; padding: 16px 20px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .config-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .config-label { font-size: 14px; color: #333; font-weight: 500; }
+        .config-input { padding: 8px 12px; border-radius: 8px; border: 1px solid #c7c7cc; font-size: 14px; width: 150px; }
+        .config-input:focus { border-color: #007aff; outline: none; }
+        .config-info { font-size: 12px; color: #8e8e93; margin-top: 8px; }
         .port-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; margin-bottom: 4px; border-radius: 10px; transition: background 0.15s; background: #f9f9fb; cursor: pointer; }
         .port-item:hover { background: #f2f2f7; }
         .port-number { font-family: "SF Mono", Monaco, monospace; font-weight: 600; background: #007aff; color: white; padding: 5px 11px; border-radius: 8px; font-size: 14px; min-width: 46px; text-align: center; }
@@ -451,6 +498,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="header">
             <h1>🏠 家庭网络端口管理器</h1>
             <p>自动发现内网设备 | 扫描开放端口 | 识别安全风险</p>
+        </div>
+        
+        <div class="config-panel">
+            <div class="config-row">
+                <span class="config-label">📡 扫描网段:</span>
+                <input type="text" id="networkInput" class="config-input" placeholder="192.168.1.0/24">
+                <button onclick="saveNetwork()">保存</button>
+                <button onclick="resetNetwork()" style="background: #8e8e93;">重置</button>
+                <button onclick="testPing()" style="background: #34c759;">测试连通</button>
+            </div>
+            <div class="config-info" id="networkInfo">
+                自动检测网段: <span id="autoNetwork">-</span> | 当前使用: <span id="currentNetwork">-</span>
+            </div>
         </div>
         
         <div class="controls">
@@ -501,6 +561,67 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <script>
         let scanInterval;
         let selectedDeviceIp = null;
+        
+        // 加载网段配置
+        function loadNetworkConfig() {
+            fetch('/api/network')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('autoNetwork').textContent = data.auto_network || '-';
+                    document.getElementById('currentNetwork').textContent = data.current_network || '-';
+                    if (data.custom_network) {
+                        document.getElementById('networkInput').value = data.custom_network;
+                    }
+                });
+        }
+        
+        // 保存网段配置
+        function saveNetwork() {
+            const network = document.getElementById('networkInput').value.trim();
+            if (!network) {
+                alert('请输入网段，如: 192.168.1.0/24');
+                return;
+            }
+            
+            fetch('/api/network', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({network: network})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    loadNetworkConfig();
+                } else {
+                    alert(data.message);
+                }
+            });
+        }
+        
+        // 重置网段配置
+        function resetNetwork() {
+            if (!confirm('确定要重置为自动检测吗？')) return;
+            
+            fetch('/api/network', {method: 'DELETE'})
+                .then(r => r.json())
+                .then(data => {
+                    alert(data.message);
+                    document.getElementById('networkInput').value = '';
+                    loadNetworkConfig();
+                });
+        }
+        
+        // 测试网关连通性
+        function testPing() {
+            const network = document.getElementById('currentNetwork').textContent;
+            if (network === '-') {
+                alert('请先设置网段');
+                return;
+            }
+            const gateway = network.replace('.0/24', '.1');
+            alert(`测试网关 ${gateway}...\n如果无响应，请检查网段设置是否正确。`);
+        }
         
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -712,11 +833,42 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
         
         window.onload = () => {
+            loadNetworkConfig();
             loadDevices();
         };
     </script>
 </body>
 </html>'''
+
+@app.route('/api/network', methods=['GET', 'POST', 'DELETE'])
+def api_network():
+    """获取/设置/重置网段配置"""
+    if request.method == 'GET':
+        return jsonify({
+            'auto_network': scanner._get_network(),
+            'custom_network': scanner.custom_network,
+            'current_network': scanner.network
+        })
+    
+    elif request.method == 'POST':
+        data = request.json or {}
+        network = data.get('network')
+        
+        if not network:
+            return jsonify({'success': False, 'message': '网段不能为空'})
+        
+        # 验证网段格式 (如 192.168.1.0/24)
+        import re
+        if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.0/24$', network):
+            return jsonify({'success': False, 'message': '网段格式错误，应为 x.x.x.0/24'})
+        
+        if scanner.save_custom_network(network):
+            return jsonify({'success': True, 'message': f'网段已设置为 {network}'})
+        return jsonify({'success': False, 'message': '保存失败'})
+    
+    elif request.method == 'DELETE':
+        scanner.reset_network()
+        return jsonify({'success': True, 'message': '已重置为自动检测'})
 
 @app.route('/')
 def index():

@@ -1,11 +1,7 @@
-version: '3.8'
-
 services:
   home-port-manager:
     build: .
     container_name: home-port-manager
-    ports:
-      - "2333:2333"
     volumes:
       - ./data:/app/data
     environment:
@@ -14,6 +10,5 @@ services:
     # Required for ping to work in Docker
     cap_add:
       - NET_RAW
-    # Using host network for LAN scanning - port mapping not used in host mode
-    # If you remove host mode, port 2333 will be mapped from container to host
-    # network_mode: host
+    # Host network mode required for LAN scanning (ping/arp)
+    network_mode: host
