@@ -262,8 +262,13 @@ class HomeNetworkScanner:
                     print(f"  [开放] {result['port']} - {result['service']}")
                 
                 scanned[0] += 1
-                if progress_callback and scanned[0] % 500 == 0:
+                # 更新进度更频繁 - 每50个端口或每1%更新一次
+                if progress_callback and (scanned[0] % 50 == 0 or scanned[0] % max(1, total // 100) == 0):
                     progress_callback(scanned[0], total)
+        
+        # 确保最后100%进度被报告
+        if progress_callback:
+            progress_callback(total, total)
         
         open_ports.sort(key=lambda x: x['port'])
         print(f"[完成] 发现 {len(open_ports)} 个开放端口")
@@ -274,14 +279,20 @@ class HomeNetworkScanner:
         found = []
         timeout_ms = 500
         workers = 100
+        total_hosts = 254
         
         print(f"[设备发现] 扫描网段 {base_ip}.1-254 ...")
+        SCAN_STATUS["current_device"] = "正在发现内网设备..."
         
         def ping_host(suffix):
             while SCAN_STATUS.get("paused", False):
                 time.sleep(0.5)
             
             ip = f"{base_ip}.{suffix}"
+            # 更新进度
+            progress = int((suffix / total_hosts) * 100)
+            SCAN_STATUS["progress"] = progress
+            
             if ip == self.local_ip:
                 return None
             try:
@@ -599,17 +610,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 
                 let statusText = '就绪';
                 if (data.scanning) {
-                    statusText = data.current_device ? `扫描中: ${data.current_device}` : '扫描中...';
+                    if (type === 'devices') statusText = `发现设备中... ${progress}%`;
+                    else if (type === 'ports') statusText = `扫描端口 ${data.current_device || selectedDeviceIp}... ${progress}%`;
+                    else statusText = data.current_device ? `扫描中: ${data.current_device} (${progress}%)` : `扫描中... ${progress}%`;
                 }
                 document.getElementById('statusText').textContent = statusText;
                 
-                if (data.scanning && data.current_device) {
-                    document.getElementById('scanningDevice').textContent = `正在扫描: ${data.current_device}`;
+                // 始终显示扫描区域和进度条当扫描中
+                if (data.scanning) {
+                    document.getElementById('scanningArea').style.display = 'block';
+                    document.getElementById('progressDiv').style.display = 'block';
+                    document.getElementById('scanningDevice').textContent = data.current_device || '扫描中...';
+                    
                     const portsDiv = document.getElementById('foundPorts');
                     if (data.found_ports && data.found_ports.length > 0) {
                         portsDiv.innerHTML = data.found_ports.map(p => 
-                            `<span style="background: #007aff; color: white; padding: 6px 12px; border-radius: 8px; font-size: 13px;">${p.port}</span>`
+                            `<span style="background: #007aff; color: white; padding: 6px 12px; border-radius: 8px; font-size: 13px; margin: 2px; display: inline-block;">${p.port}</span>`
                         ).join('');
+                    } else {
+                        portsDiv.innerHTML = '<span style="color: #999; font-size: 13px;">等待发现开放端口...</span>';
                     }
                 }
                 
@@ -617,10 +636,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     clearInterval(scanInterval);
                     setScanningState(false);
                     document.getElementById('statusText').textContent = '扫描完成';
-                    document.getElementById('progressDiv').style.display = 'none';
-                    document.getElementById('scanningArea').style.display = 'none';
+                    setTimeout(() => {
+                        document.getElementById('progressDiv').style.display = 'none';
+                        document.getElementById('scanningArea').style.display = 'none';
+                    }, 2000);
                     loadDevices();
                 }
+            }).catch(err => {
+                console.error('获取状态失败:', err);
             });
         }
         
