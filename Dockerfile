@@ -18,6 +18,6 @@ COPY app.py .
 # Create volume for data persistence
 VOLUME ["/app/data"]
 
-EXPOSE 5000
+EXPOSE 2333
 
 CMD ["python", "app.py"]

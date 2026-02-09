@@ -542,6 +542,6 @@ if __name__ == '__main__':
 ==========================================
    家庭网络端口管理器 (Home Port Manager)
 ==========================================
-访问: http://0.0.0.0:5000
+访问: http://0.0.0.0:2333
     """)
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=2333, debug=False, threaded=True)
